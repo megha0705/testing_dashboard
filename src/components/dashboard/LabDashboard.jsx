@@ -1257,7 +1257,7 @@ const filteredOrders = orders.filter(order => {
                 </div>
               )}
               {/* Lab ETA Section */} 
-              {selectedOrder.status === "AWAITING_PARTS" && !hasSubmittedInitialETAAndFiles && (
+              {selectedOrder.status === "AWAITING_PARTS" || !hasSubmittedInitialETAAndFiles && (
 
               <div className="mb-6"> 
                 <h4 className="text-lg font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-200"> Lab ETA </h4>
