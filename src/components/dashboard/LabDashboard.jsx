@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Package, LogOut, FileText, Calendar, CheckCircle, Clock, AlertCircle, DollarSign, RefreshCw, Bell, Eye, X } from 'lucide-react';
 import { getAllTestOrders } from '../../services/testOrderService';
-import { requestNotificationPermission, messaging, onMessage } from '../../config/firebase';
-import { getAllNotifications, markNotificationAsRead } from '../../services/notificationService';
+import { requestNotificationPermission, messaging , onMessage} from '../../config/firebase';
+import { getLabNotifications ,getAllNotifications, markNotificationAsRead } from '../../services/notificationService';
 
 const LabDashboard = () => {
   const [orders, setOrders] = useState([]);
@@ -325,7 +325,7 @@ useEffect(() => {
   const fetchNotifications = async () => {
     setLoadingNotifications(true);
     try {
-      const data = await getAllNotifications();
+      const data = await getLabNotifications();
       // Transform backend data to match frontend format
       const transformedNotifications = data.map(notif => ({
         id: notif.id,
@@ -388,54 +388,71 @@ useEffect(() => {
   }, [showDetailModal]);
 
 
-  useEffect(() => {
-    fetchOrders();
-    fetchNotifications();
+ useEffect(() => {
+  fetchOrders();
+  fetchNotifications();
 
-    let unsubscribe;
+  let unsubscribe;
 
-    const initFCM = async () => {
-      try {
-        const fcmToken = await requestNotificationPermission();
+const initFCM = async () => {
+  try {
+    const fcmToken = await requestNotificationPermission();
 
-        if (fcmToken) {
-          const savedToken = localStorage.getItem('fcmToken');
-          if (savedToken !== fcmToken) {
-            await registerDeviceToken(fcmToken);
-            localStorage.setItem('fcmToken', fcmToken);
-          }
-        }
+    if (fcmToken) {
+      console.log('🔑 Current FCM Token:', fcmToken);
+      
+      // 🔥 ALWAYS register token (remove the saved token check)
+      await registerDeviceToken(fcmToken);
+      localStorage.setItem('fcmToken', fcmToken);
+      
+      console.log('✅ Token registered with backend');
+    }
 
-        unsubscribe = onMessage(messaging, (payload) => {
-          console.log('FCM payload:', payload);
+    // 🔥 LISTEN FOR FOREGROUND MESSAGES
+    unsubscribe = onMessage(messaging, (payload) => {
+      console.log("🔥 FCM PAYLOAD RECEIVED:", payload);
+        const title = payload.notification?.title || payload.data?.title || "New Test Order";
+        const body = payload.notification?.body || payload.data?.body || "A new test order has been assigned";
+        const orderId = payload.data?.orderId || null;
 
-          const newNotification = {
-            id: Date.now(),
-            title: payload.notification?.title || 'New Notification',
-            body: payload.notification?.body || '',
-            orderId: payload.data?.orderId,
-            read: false,
-            timestamp: new Date()
-          };
+        const newNotification = {
+          id: Date.now(),
+          title,
+          body,
+          orderId,
+          read: false,
+          timestamp: new Date(),
+        };
 
-          setNotification(newNotification);
-          setShowNotification(true);
+        // Show toast notification
+        setNotification(newNotification);
+        setShowNotification(true);
 
-          fetchOrders();
-          fetchNotifications();
-        });
+        // Add to notification panel list
+        setNotificationHistory(prev => [newNotification, ...prev]);
 
-      } catch (err) {
-        console.error('FCM setup failed:', err);
-      }
-    };
+        // Refresh orders
+        fetchOrders();
 
-    initFCM();
+        // Auto-hide after 15 seconds
+        setTimeout(() => {
+          setShowNotification(false);
+        }, 15000);
+      });
 
-    return () => {
-      if (unsubscribe) unsubscribe(); // 🔥 VERY IMPORTANT
-    };
-  }, []);
+    } catch (err) {
+      console.error('FCM setup failed:', err);
+    }
+  };
+
+  initFCM();
+
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, []);
+
+
 
   const handleLogout = () => {
     localStorage.removeItem('authToken');
@@ -1257,7 +1274,7 @@ const filteredOrders = orders.filter(order => {
                 </div>
               )}
               {/* Lab ETA Section */} 
-              {selectedOrder.status === "AWAITING_PARTS" || !hasSubmittedInitialETAAndFiles && (
+              {selectedOrder.status === "AWAITING_PARTS" && !hasSubmittedInitialETAAndFiles && (
 
               <div className="mb-6"> 
                 <h4 className="text-lg font-semibold text-gray-900 mb-3 pb-2 border-b border-gray-200"> Lab ETA </h4>

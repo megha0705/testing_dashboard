@@ -9,3 +9,14 @@ root.render(
     <App />
   </React.StrictMode>
 );
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .register("/firebase-messaging-sw.js")
+    .then((reg) => {
+      console.log("✅ Firebase SW registered:", reg.scope);
+    })
+    .catch((err) => {
+      console.error("❌ Firebase SW registration failed:", err);
+    });
+}

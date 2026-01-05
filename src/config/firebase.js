@@ -45,13 +45,25 @@ export const requestNotificationPermission = async () => {
 
 
 // Listen for foreground messages
-export const onMessageListener = () =>
+
+  export const onMessageListener = () =>
   new Promise((resolve) => {
     onMessage(messaging, (payload) => {
-      console.log('Message received:', payload);
+      console.log("🔥 FCM PAYLOAD:", payload);
+
+      const { title, body } = payload.data;
+
+      if (Notification.permission === "granted") {
+        new Notification(title, {
+          body,
+          icon: "/logo192.png",
+        });
+      }
+
       resolve(payload);
     });
   });
+
 
  
 

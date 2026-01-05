@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Package, Plus, FileText, Calendar, User, LogOut, CheckCircle, X, Clock, AlertCircle, DollarSign, RefreshCw, Bell } from 'lucide-react';
 import { createTestOrder, getAllTestOrders } from '../../services/testOrderService';
 import { requestNotificationPermission, messaging, onMessage } from '../../config/firebase';
-import { getAllNotifications, markNotificationAsRead } from '../../services/notificationService';
+import { getAllNotifications, getAdminNotifications, markNotificationAsRead } from '../../services/notificationService';
 const AdminDashboard = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -23,7 +23,8 @@ const AdminDashboard = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
 
-
+const [notificationHistory, setNotificationHistory] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
 
@@ -225,30 +226,130 @@ const AdminDashboard = () => {
   };
 
   // Fetch orders on component mount
-  useEffect(() => {
-    requestNotificationPermission();
+ const fetchNotifications = async () => {
+  setLoadingNotifications(true);
+  try {
+    const data = await getAdminNotifications();
+    const transformedNotifications = data.map(notif => ({
+      id: notif._id,
+      title: notif.title,
+      body: notif.body,
+      orderId: notif.orderId,
+      timestamp: new Date(notif.createdAt),
+      read: notif.read,
+      type: notif.type
+    }));
+    setNotificationHistory(transformedNotifications);
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+  } finally {
+    setLoadingNotifications(false);
+  }
+};
 
-    const unsubscribe = onMessage(messaging, (payload) => {
-      console.log("FCM message received:", payload);
+// Add this function to register FCM token
+const registerDeviceToken = async (token) => {
+  try {
+    const authToken = localStorage.getItem('authToken');
 
-      const { title, body } = payload.notification || {};
-      const orderId = payload.data?.orderId;
-
-      if (!orderId) return;
-
-      setNotifications((prev) => [
-        {
-          title,
-          body,
-          testOrderId: orderId,
-          read: false,
-        },
-        ...prev,
-      ]);
+    await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}/user/device/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}`
+      },
+      body: JSON.stringify({ token })
     });
 
-    return () => unsubscribe();
-  }, []);
+    console.log('Device token registered successfully');
+  } catch (error) {
+    console.error('Error registering device token:', error);
+  }
+};
+
+// REPLACE your existing useEffect with this:
+useEffect(() => {
+  fetchOrders();
+  fetchNotifications(); // NEW: Fetch notifications on load
+
+  let unsubscribe;
+
+  const initFCM = async () => {
+    try {
+      const fcmToken = await requestNotificationPermission();
+
+      if (fcmToken) {
+        console.log('🔑 Current FCM Token:', fcmToken);
+        
+        // ALWAYS register token
+        await registerDeviceToken(fcmToken);
+        localStorage.setItem('fcmToken', fcmToken);
+        
+        console.log('✅ Token registered with backend');
+      }
+
+      // Listen for foreground messages
+      unsubscribe = onMessage(messaging, (payload) => {
+        console.log("🔥 FCM PAYLOAD RECEIVED:", payload);
+
+        const title = payload.notification?.title || payload.data?.title || "New Notification";
+        const body = payload.notification?.body || payload.data?.body || "You have a notification";
+        const orderId = payload.data?.orderId || null;
+
+        console.log('📦 Order ID from notification:', orderId);
+
+        const newNotification = {
+          id: Date.now(),
+          title,
+          body,
+          orderId,
+          read: false,
+          timestamp: new Date(),
+        };
+
+        // Add to notification history
+        setNotificationHistory(prev => [newNotification, ...prev]);
+        
+        // Refresh orders
+        fetchOrders();
+
+        console.log('✅ Notification received');
+      });
+
+    } catch (err) {
+      console.error('❌ FCM setup failed:', err);
+    }
+  };
+
+  initFCM();
+
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, []);
+
+// Add this function to handle notification clicks
+const handleNotificationClick = async (notif) => {
+  console.log("CLICKED NOTIF orderId:", notif.orderId);
+  
+  // Mark as read
+  try {
+    await markNotificationAsRead(notif.id);
+    setNotificationHistory(prev =>
+      prev.map(n => n.id === notif.id ? { ...n, read: true } : n)
+    );
+  } catch (error) {
+    console.error('Error marking as read:', error);
+  }
+
+  // Close notification panel
+  setShowNotifications(false);
+
+  // Open order details
+  if (notif.orderId) {
+    await openOrderDetails(notif.orderId);
+  }
+};
 
   useEffect(() => {
     fetchOrders();
@@ -414,6 +515,7 @@ const AdminDashboard = () => {
     pending: orders.filter(o => o.status === 'AWAITING_PARTS' || o.status === 'IN_PROGRESS' || o.status === 'ON_HOLD').length,
     completed: orders.filter(o => o.status === 'COMPLETED_PASS' || o.status === 'COMPLETED_FAIL' || o.status === 'CLOSED').length
   };
+const unreadCount = notificationHistory.filter(n => !n.read).length;
 
   return (
     //<div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -437,16 +539,17 @@ const AdminDashboard = () => {
               
             </div>
             <div className="flex items-center gap-4"> 
-                <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 rounded-full hover:bg-gray-100"
-            >
-              <Bell className="w-6 h-6 text-gray-700" />
-
-              {notifications.some(n => !n.read) && (
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              )}
-            </button>
+               <button
+  onClick={() => setShowNotifications(!showNotifications)}
+  className="relative p-2 rounded-full hover:bg-gray-100"
+>
+  <Bell className="w-6 h-6 text-gray-700" />
+  {unreadCount > 0 && (
+    <span className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+      {unreadCount}
+    </span>
+  )}
+</button>
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
@@ -463,41 +566,47 @@ const AdminDashboard = () => {
 
         </div>
       </div>
-      {showNotifications && (
-        <div className="absolute right-0 mt-2 w-80 bg-white border rounded-lg shadow-lg z-50">
-          <div className="p-3 border-b text-sm font-semibold">
-            Notifications
-          </div>
-
-          {notifications.length === 0 ? (
-            <p className="p-4 text-sm text-gray-500">No notifications</p>
-          ) : (
-            notifications.map((n, index) => (
-              <div
-                key={index}
-                onClick={() => {
-                  setShowNotifications(false);
-
-                  // mark as read
-                  setNotifications(prev =>
-                    prev.map((item, i) =>
-                      i === index ? { ...item, read: true } : item
-                    )
-                  );
-
-                  // OPEN ORDER DETAILS (IMPORTANT)
-                  openOrderDetails(n.testOrderId);
-                }}
-                className={`px-4 py-3 text-sm cursor-pointer hover:bg-gray-50 ${n.read ? "text-gray-500" : "text-gray-900 font-medium"
-                  }`}
-              >
-                <p>{n.title}</p>
-                <p className="text-xs text-gray-500 mt-1">{n.body}</p>
-              </div>
-            ))
-          )}
-        </div>
+    {showNotifications && (
+  <div className="absolute right-0 mt-2 w-80 bg-white border rounded-lg shadow-lg z-50 max-h-96 overflow-y-auto">
+    <div className="p-3 border-b text-sm font-semibold flex items-center justify-between">
+      <span>Notifications</span>
+      {unreadCount > 0 && (
+        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
+          {unreadCount}
+        </span>
       )}
+    </div>
+
+    {notificationHistory.length === 0 ? (
+      <p className="p-4 text-sm text-gray-500">No notifications</p>
+    ) : (
+      notificationHistory.map((notif) => (
+        <div
+          key={notif.id}
+          onClick={() => handleNotificationClick(notif)}
+          className={`px-4 py-3 text-sm cursor-pointer hover:bg-gray-50 border-b ${
+            !notif.read ? "bg-blue-50 font-medium" : "text-gray-600"
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            {!notif.read && (
+              <div className="w-2 h-2 bg-blue-600 rounded-full mt-2 flex-shrink-0" />
+            )}
+            <div className="flex-1">
+              <p className={!notif.read ? "text-gray-900" : "text-gray-600"}>
+                {notif.title}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">{notif.body}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                {new Date(notif.timestamp).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </div>
+      ))
+    )}
+  </div>
+)}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
