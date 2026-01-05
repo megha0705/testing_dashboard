@@ -332,7 +332,7 @@ useEffect(() => {
         title: notif.title,
         body: notif.body,
         orderId: notif.orderId,
-        timestamp: new Date(notif.createdAt),
+        timestamp: notif.createdAt ? new Date(notif.createdAt) : new Date(),
         read: notif.read,
         type: notif.type,
         recipient: notif.recipient

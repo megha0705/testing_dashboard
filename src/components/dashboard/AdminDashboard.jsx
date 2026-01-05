@@ -230,12 +230,13 @@ const [notificationHistory, setNotificationHistory] = useState([]);
   setLoadingNotifications(true);
   try {
     const data = await getAdminNotifications();
+    console.log("Fetched admin notifications:", data);
     const transformedNotifications = data.map(notif => ({
-      id: notif._id,
+      id: notif.id,
       title: notif.title,
       body: notif.body,
       orderId: notif.orderId,
-      timestamp: new Date(notif.createdAt),
+      timestamp: notif.createdAt ? new Date(notif.createdAt) : new Date(),
       read: notif.read,
       type: notif.type
     }));
@@ -330,8 +331,9 @@ useEffect(() => {
 
 // Add this function to handle notification clicks
 const handleNotificationClick = async (notif) => {
+    console.log("CLICKED NOTIF :", notif.id);
   console.log("CLICKED NOTIF orderId:", notif.orderId);
-  
+
   // Mark as read
   try {
     await markNotificationAsRead(notif.id);
