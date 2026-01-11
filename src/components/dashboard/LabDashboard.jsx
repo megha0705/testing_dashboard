@@ -261,7 +261,7 @@ useEffect(() => {
     setEtaSuccess('');
 
     try {
-      const authToken = localStorage.getItem('authToken');
+      const authToken = localStorage.getItem('lab_token');
 
       const formData = new FormData();
       formData.append('labEta', labEta); // LocalDateTime
@@ -302,7 +302,7 @@ useEffect(() => {
     setUploadSuccess('');
 
     try {
-      const authToken = localStorage.getItem('authToken');
+      const authToken = localStorage.getItem('lab_token');
 
       const formData = new FormData();
       formData.append('dateRecieved', dateReceived);
@@ -373,7 +373,7 @@ useEffect(() => {
   // NEW: Register device token with backend
   const registerDeviceToken = async (token) => {
     try {
-      const authToken = localStorage.getItem('authToken');
+      const authToken = localStorage.getItem('lab_token');
       console.log('JWT:', authToken);
 
       await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}/user/device/register`, {
@@ -476,7 +476,7 @@ const initFCM = async () => {
 
 
   const handleLogout = () => {
-    localStorage.removeItem('authToken');
+    localStorage.removeItem('lab_token');
     window.location.href = '/login';
   };
 
