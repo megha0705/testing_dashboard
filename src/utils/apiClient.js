@@ -1,7 +1,7 @@
 const API_BASE_URL = process.env.REACT_APP_API_URL;
 
 export const apiClient = async (endpoint, options = {}) => {
-  const token = localStorage.getItem('authToken');
+  const token = localStorage.getItem('admin_token');
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: {

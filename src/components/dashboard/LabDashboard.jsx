@@ -45,6 +45,18 @@ const [invoiceUploading, setInvoiceUploading] = useState(false);
 const [invoiceError, setInvoiceError] = useState("");
 const [invoiceSuccess, setInvoiceSuccess] = useState("");
 //upload invoice section
+const LAB_ALLOWED_TYPES = [
+  "TEST_ORDER",
+  "SLA_ALERT",
+  "BILLING_PAID"
+];
+const getAuthToken = () => {
+  const role = localStorage.getItem("active_role");
+  if (role === "LAB") return localStorage.getItem("lab_token");
+  if (role === "ADMIN") return localStorage.getItem("admin_token");
+  return null;
+};
+
 const uploadInvoice = async () => {
   if (!invoiceFile) {
     setInvoiceError("Please select an invoice file");
@@ -56,7 +68,7 @@ const uploadInvoice = async () => {
   setInvoiceSuccess("");
 
   try {
-    const authToken = localStorage.getItem("authToken");
+    const authToken = localStorage.getItem("lab_token");
     const formData = new FormData();
     formData.append("file", invoiceFile);
 
@@ -99,7 +111,7 @@ const submitReportFiles = async () => {
   setUploadSuccess("");
 
   try {
-    const authToken = localStorage.getItem("authToken");
+    const authToken = localStorage.getItem("lab_token");
     const formData = new FormData();
 
     uploadedFile.forEach(file => formData.append("files", file));
@@ -135,7 +147,7 @@ const submitReportFiles = async () => {
 
   //get a test Order by id
   const openOrderDetails = async (id) => {
-    const authToken = localStorage.getItem("authToken");
+    const authToken = localStorage.getItem("lab_token");
     if (!id) return;
 
     try {
@@ -208,7 +220,7 @@ useEffect(() => {
 
     setIssueSubmitting(true);
 
-    const authToken = localStorage.getItem("authToken");
+    const authToken = localStorage.getItem("lab_token");
 
     try {
       const res = await fetch(
@@ -411,6 +423,13 @@ const initFCM = async () => {
     // 🔥 LISTEN FOR FOREGROUND MESSAGES
     unsubscribe = onMessage(messaging, (payload) => {
       console.log("🔥 FCM PAYLOAD RECEIVED:", payload);
+       const type = payload.data?.type;
+      // ⛔ Ignore admin-only notifications
+      if (!LAB_ALLOWED_TYPES.includes(type)) {
+        console.log("⛔ Ignored non-lab notification:", type);
+        return;
+      }
+
         const title = payload.notification?.title || payload.data?.title || "New Test Order";
         const body = payload.notification?.body || payload.data?.body || "A new test order has been assigned";
         const orderId = payload.data?.orderId || null;
@@ -421,7 +440,9 @@ const initFCM = async () => {
           body,
           orderId,
           read: false,
-          timestamp: new Date(),
+          timestamp: payload.data?.createdAt
+      ? new Date(payload.data.createdAt)
+      : new Date(),
         };
 
         // Show toast notification
@@ -990,7 +1011,11 @@ const filteredOrders = orders.filter(order => {
                               {notif.title}
                             </h4>
                             <span className="text-xs text-gray-500 whitespace-nowrap">
-                              {formatNotificationTime(notif.timestamp)}
+                                        {new Intl.DateTimeFormat("en-IN", {
+                                        dateStyle: "medium",
+                                        timeStyle: "short",
+                                      }).format(new Date(notif.timestamp))}
+
                             </span>
                           </div>
 

@@ -3,7 +3,9 @@ import { Package, Plus, FileText, Calendar, User, LogOut, CheckCircle, X, Clock,
 import { createTestOrder, getAllTestOrders } from '../../services/testOrderService';
 import { requestNotificationPermission, messaging, onMessage } from '../../config/firebase';
 import { getAllNotifications, getAdminNotifications, markNotificationAsRead } from '../../services/notificationService';
+import { authFetch } from "../../utils/authFetch";
 const AdminDashboard = () => {
+  
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [formData, setFormData] = useState({
     createdBy: '',
@@ -34,21 +36,20 @@ const [notificationHistory, setNotificationHistory] = useState([]);
   const [logisticError, setLogisticError] = useState("");
   const [logisticSuccess, setLogisticSuccess] = useState("");
 
-
+const ADMIN_NOTIFICATION_TYPES = ["LAB_ETA", "INVOICE"];
+const getAuthToken = () => {
+  const role = localStorage.getItem("active_role");
+  if (role === "LAB") return localStorage.getItem("lab_token");
+  if (role === "ADMIN") return localStorage.getItem("admin_token");
+  return null;
+};
   //verify payment 
   const verifyPayment = async () => {
     try {
-      const authToken = localStorage.getItem("authToken");
 
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/admin/bill-status/${selectedOrder.id}`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${authToken}`
-          }
-        }
-      );
+      const response = await authFetch(`${process.env.REACT_APP_API_URL}/admin/bill-status/${selectedOrder.id}`, {
+      method: "POST",
+});
 
       if (!response.ok) {
         throw new Error("Payment verification failed");
@@ -73,14 +74,14 @@ const [notificationHistory, setNotificationHistory] = useState([]);
     setLogisticSuccess("");
 
     try {
-      const authToken = localStorage.getItem("authToken");
+      const authToken = localStorage.getItem("admin_token");;
 
       const params = new URLSearchParams({
         awb,
         dispatchDate
       });
 
-      const response = await fetch(
+     /* const response = await fetch(
         `${process.env.REACT_APP_API_URL || "http://localhost:8080/api"}/admin/logistic/${selectedOrder.id}?${params}`,
         {
           method: "POST",
@@ -88,7 +89,10 @@ const [notificationHistory, setNotificationHistory] = useState([]);
             Authorization: `Bearer ${authToken}`
           }
         }
-      );
+      );*/
+        const response = await authFetch(`${process.env.REACT_APP_API_URL || "http://localhost:8080/api"}/admin/logistic/${selectedOrder.id}?${params}`, {
+      method: "POST",
+});
 
       if (!response.ok) {
         throw new Error("Failed to save logistics");
@@ -110,9 +114,9 @@ const [notificationHistory, setNotificationHistory] = useState([]);
     if (!selectedOrder?.id) return;
 
     try {
-      const token = localStorage.getItem("authToken");
+      const token = localStorage.getItem("admin_token");;
 
-      const res = await fetch(
+    /*  const res = await fetch(
         `${process.env.REACT_APP_API_URL}/admin/verify/${selectedOrder.id}?testPassed=${testPassed}`,
         {
           method: "POST",
@@ -120,7 +124,11 @@ const [notificationHistory, setNotificationHistory] = useState([]);
             Authorization: `Bearer ${token}`,
           },
         }
-      );
+      );*/
+
+        const res = await authFetch(`${process.env.REACT_APP_API_URL}/admin/verify/${selectedOrder.id}?testPassed=${testPassed}`, {
+      method: "POST",
+});
 
       if (!res.ok) throw new Error("Verification failed");
 
@@ -156,10 +164,10 @@ const [notificationHistory, setNotificationHistory] = useState([]);
   const handleApprove = async () => {
     if (!selectedOrder?.id) return;
 
-    const authToken = localStorage.getItem("authToken");
+    const authToken = localStorage.getItem("admin_token");;
 
     try {
-      const res = await fetch(
+    /*  const res = await fetch(
         `${process.env.REACT_APP_API_URL}/admin/approval/${selectedOrder.id}`,
         {
           method: "POST",
@@ -167,8 +175,10 @@ const [notificationHistory, setNotificationHistory] = useState([]);
             Authorization: `Bearer ${authToken}`,
           },
         }
-      );
-
+      );*/
+        const res = await authFetch(`${process.env.REACT_APP_API_URL}/admin/approval/${selectedOrder.id}`, {
+      method: "POST",
+      });
       if (!res.ok) {
         throw new Error("Approval failed");
       }
@@ -194,14 +204,15 @@ const [notificationHistory, setNotificationHistory] = useState([]);
 
     if (!id) return;
 
-    const res = await fetch(
+   /* const res = await fetch(
       `${process.env.REACT_APP_API_URL}/user/get-testorder/${id}`,
       {
         headers: {
           Authorization: `Bearer ${authToken}`,
         },
       }
-    );
+    );*/
+      const res = await authFetch(`${process.env.REACT_APP_API_URL}/user/get-testorder/${id}`);
 
     if (!res.ok) return;
 
@@ -252,7 +263,7 @@ const [notificationHistory, setNotificationHistory] = useState([]);
 const registerDeviceToken = async (token) => {
   try {
     const authToken = localStorage.getItem('authToken');
-
+/*
     await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}/user/device/register`, {
       method: 'POST',
       headers: {
@@ -261,6 +272,18 @@ const registerDeviceToken = async (token) => {
       },
       body: JSON.stringify({ token })
     });
+*/
+
+await authFetch(
+  `${process.env.REACT_APP_API_URL || 'http://localhost:8080/api'}/user/device/register`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token }),
+  }
+);
 
     console.log('Device token registered successfully');
   } catch (error) {
@@ -292,7 +315,13 @@ useEffect(() => {
       // Listen for foreground messages
       unsubscribe = onMessage(messaging, (payload) => {
         console.log("🔥 FCM PAYLOAD RECEIVED:", payload);
+        const type = payload.data?.type;
 
+      // ⛔ Ignore LAB notifications
+      if (!ADMIN_NOTIFICATION_TYPES.includes(type)) {
+        console.log("⛔ Ignored non-admin notification:", type);
+        return;
+      }
         const title = payload.notification?.title || payload.data?.title || "New Notification";
         const body = payload.notification?.body || payload.data?.body || "You have a notification";
         const orderId = payload.data?.orderId || null;
@@ -305,8 +334,10 @@ useEffect(() => {
           body,
           orderId,
           read: false,
-          timestamp: new Date(),
-        };
+           timestamp: payload.data?.createdAt
+      ? new Date(payload.data.createdAt)
+      : new Date(),
+  };
 
         // Add to notification history
         setNotificationHistory(prev => [newNotification, ...prev]);
@@ -321,8 +352,7 @@ useEffect(() => {
       console.error('❌ FCM setup failed:', err);
     }
   };
-
-  initFCM();
+    initFCM();
 
   return () => {
     if (unsubscribe) unsubscribe();
@@ -600,7 +630,11 @@ const unreadCount = notificationHistory.filter(n => !n.read).length;
               </p>
               <p className="text-xs text-gray-500 mt-1">{notif.body}</p>
               <p className="text-xs text-gray-400 mt-1">
-                {new Date(notif.timestamp).toLocaleString()}
+                      {new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(notif.timestamp))}
+
               </p>
             </div>
           </div>
